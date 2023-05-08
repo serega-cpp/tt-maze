@@ -1,203 +1,304 @@
+/* Having the text defined 2D maze, like:
+	......
+	.>..<.
+	A.....
+	...v..
+	.^..<.
+	......
+
+   We need find a path from 'A' to the last cell.
+   '.' - is a free cell, '<', '>', '^', 'v' - are
+   "guards" which extends to the particular
+   direction thougth the free cells until end of
+   maze or occupied cell will be reached, so the
+   sample will become:
+    ......
+	.XXXX.
+	AX....
+	.X.X..
+	.XXXX.
+	...X..
+
+   where 'X' - occupied cell.
+
+   Question: Is path exists?
+*/
 #include <iostream>
 #include <deque>
 #include <string>
 #include <vector>
 
-const char cAssassin = 'A';
-const char cFree = '.';
-const char cGuardLeft = '<';
+// Original set
+const char cAssassin   = 'A';
+const char cGuardLeft  = '<';
 const char cGuardRight = '>';
-const char cGuardUp = '^';
-const char cGuardDown = 'v';
-const char cOccupied = 'X';
-const char cVisited = '+';
+const char cGuardUp    = '^';
+const char cGuardDown  = 'v';
+const char cFree       = '.';
 
-struct Point
-{
-	size_t x;
-	size_t y;
+// Internal set
+const char cOccupied = 'x';
 
-	Point(size_t x, size_t y): x(x), y(y) {
-	}
-
-	bool operator == (const Point &p) const {
-		return p.x == x && p.y == y;
-	}
+struct Cell {
+	size_t row;
+	size_t col;
+	Cell(size_t row, size_t col): row(row), col(col) {}
+	bool operator == (const Cell &o) { return row == o.row && col == o.col; }
 };
 
-class MazeWrapper
+class MazeType: public std::vector<std::string>
 {
 public:
-	MazeWrapper(std::vector<std::string> &maze): maze(maze) {
+	MazeType() {
+	}
+
+	MazeType(size_t rows, size_t cols, char c) {
+		resize(rows);
+		for (size_t i = 0; i < rows; i++) {
+			at(i).resize(cols, c);
+		}
+	}
+
+	void set(size_t row, size_t col, char c) {
+		at(row)[col] = c;
+	}
+
+	char get(size_t row, size_t col) const {
+		return at(row)[col];
+	}
+
+	bool compare_and_set(size_t row, size_t col, char c, char s) {
+		if (get(row, col) == c) {
+			set(row, col, s);
+			return true;
+		}
+		return false;
+	}
+
+	size_t rows() const {
+		return size();
+	}
+
+	size_t cols() const {
+		return size() > 0 ? at(0).size() : 0;
+	}
+
+	bool empty() const {
+		return rows() == 0;
 	}
 
 	void print() const {
-		for (size_t i = 0; i < maze.size(); i++) {
-			std::cout << maze[i] << std::endl;
+		for (size_t i = 0; i < size(); i++) {
+			std::cout << at(i) << std::endl;
 		}
 		std::cout << std::endl;
 	}
 
-	void set(const Point &p, char c) {
-		maze[p.y][p.x] = c;
+	bool operator == (const MazeType &other) const {
+		if (size() != other.size())
+			return false;
+
+		for (size_t i = 0; i < size(); i++) {
+			if (at(i) != other[i])
+				return false;
+		}
+
+		return true;
 	}
 
-	char get(const Point &p) const {
-		return maze[p.y][p.x];
+	bool operator != (const MazeType &other) const {
+		return !(*this == other);
 	}
+};
 
-	size_t max_row() const {
-		return maze.size();
-	}
+class Maze
+{
+public:
+	Maze(const MazeType &maze)
+		: _maze(maze.rows(), maze.cols(), cFree)
+		, _beg(0, 0)
+		, _end(0, 0)
+	{
+		if (maze.rows() > 0 && maze.cols() > 0) {
+			_end.row = maze.rows() - 1;
+			_end.col = maze.cols() - 1;
+		}
 
-	size_t max_col() const {
-		return maze.size() > 0 ? maze[0].size() : 0;
-	}
-
-	bool is_empty() const {
-		return max_row() == 0 || max_col() == 0;
-	}
-
-	Point find(char c) const {
-		for (size_t i = 0; i < max_row(); i++) {
-			for (size_t j = 0; j < max_col(); j++) {
-				Point p(j, i);
-				if (get(p) == c)
-					return p;
+		for (size_t r = 0; r < maze.rows(); r++) {
+			for (size_t c = 0; c < maze.cols(); c++) {
+				size_t beg, end;
+				switch(maze.get(r, c)) {
+					case cGuardLeft:
+						beg = 0, end = c + 1;
+						if (c > 0) {
+							for (size_t i = c - 1; i > 0; i--) {
+								if (maze.get(r, i) != cFree) {
+									beg = i + 1;
+									break;
+								}
+							}
+						}
+						for (size_t i = beg; i < end; i++) {
+							_maze.set(r, i, cOccupied);
+						}
+						break;
+					case cGuardRight:
+						beg = c, end = maze.cols();
+						for (size_t i = c + 1; i < maze.cols(); i++) {
+							if (maze.get(r, i) != cFree) {
+								end = i;
+								break;
+							}
+						}
+						for (size_t i = beg; i < end; i++) {
+							_maze.set(r, i, cOccupied);
+						}
+						break;
+					case cGuardUp:
+						beg = 0, end = r + 1;
+						if (r > 0) {
+							for (size_t j = r - 1; j > 0; j--) {
+								if (maze.get(j, c) != cFree) {
+									beg = j + 1;
+									break;
+								}
+							}
+						}
+						for (size_t j = beg; j < end; j++) {
+							_maze.set(j, c, cOccupied);
+						}
+						break;
+					case cGuardDown:
+						beg = r, end = maze.rows();
+						for (size_t j = r + 1; j < maze.rows(); j++) {
+							if (maze.get(j, c) != cFree) {
+								end = j;
+								break;
+							}
+						}
+						for (size_t j = beg; j < end; j++) {
+							_maze.set(j, c, cOccupied);
+						}
+						break;
+					case cAssassin:
+						std::cout << "Start at row " << r << " col " << c << std::endl;
+						_beg.row = r;
+						_beg.col = c;
+						break;
+				}
 			}
 		}
-		return Point(max_col(), max_row()); // not found
+	}
+
+	std::vector<Cell> get_free_cells_around(const Cell &cell, char visited) {
+		std::vector<Cell> cells;
+		if (cell.row + 1 < _maze.rows()) { // down
+			Cell next(cell.row + 1, cell.col);
+			if (_maze.compare_and_set(next.row, next.col, cFree, visited)) {
+				cells.push_back(next);
+			}
+		}
+		if (cell.col + 1 < _maze.cols()) { // right
+			Cell next(cell.row, cell.col + 1);
+			if (_maze.compare_and_set(next.row, next.col, cFree, visited)) {
+				cells.push_back(next);
+			}
+		}
+		if (cell.row > 0) { // up
+			Cell next(cell.row - 1, cell.col);
+			if (_maze.compare_and_set(next.row, next.col, cFree, visited)) {
+				cells.push_back(next);
+			}
+		}
+		if (cell.col > 0) { // left
+			Cell next(cell.row, cell.col - 1);
+			if (_maze.compare_and_set(next.row, next.col, cFree, visited)) {
+				cells.push_back(next);
+			}
+		}
+		return cells;
+	}
+
+	bool is_path_exists() {
+		Cell cell(_beg.row, _beg.col);
+		_maze.set(cell.row, cell.col, 'A');
+		std::deque<Cell> cells;
+
+		for (;;) {
+			if (cell == _end)
+				return true; // found
+
+			char visited = _maze.get(cell.row, cell.col) + 1;
+			std::vector<Cell> next = get_free_cells_around(cell, visited);
+			cells.insert(cells.begin(), next.begin(), next.end());
+
+			if (cells.empty())
+				break; // not found
+
+			cell = cells.front();
+			cells.pop_front();
+		}
+
+		return false;
+	}
+
+	const MazeType & get_maze() const {
+		return _maze;
 	}
 
 private:
-	std::vector<std::string> &maze;
+	MazeType _maze;
+	Cell     _beg;
+	Cell     _end;
 };
 
-void prepare_maze(MazeWrapper &maze)
-{
-	for (size_t i = 0; i < maze.max_row(); i++) {
-		for (size_t j = 0; j < maze.max_col(); j++) {
-			Point p(j, i);
-			switch(maze.get(p)) {
-				case cGuardLeft:
-					do {
-						maze.set(p, cOccupied);
-					} while(p.x-- > 0 && maze.get(p) == cFree);
-					break;
-				case cGuardRight:
-					do {
-						maze.set(p, cOccupied);
-					} while(++p.x < maze.max_col() && maze.get(p) == cFree);
-					break;
-				case cGuardUp:
-					do {
-						maze.set(p, cOccupied);
-					} while(p.y-- > 0 && maze.get(p) == cFree);
-					break;
-				case cGuardDown:
-					do {
-						maze.set(p, cOccupied);
-					} while(++p.y < maze.max_row() && maze.get(p) == cFree);
-					break;
-			}
-		}
-	}
+MazeType get_maze() {
+	MazeType maze;
+	maze.push_back(".^..^");
+	maze.push_back("...v.");
+	maze.push_back("Av...");
+	maze.push_back(".^...");
+	maze.push_back("<....");
+	maze.push_back("<..^.");
+	maze.push_back("<....");
+	maze.push_back("<.vv.");
+	return maze;
 }
 
-std::vector<Point> get_free_points_around(MazeWrapper &maze, const Point &p)
-{
-	std::vector<Point> result;
-
-	if (p.x + 1 < maze.max_col()) {
-		Point right(p.x + 1, p.y);
-		if (maze.get(right) == cFree) {
-			maze.set(right, cVisited);
-			result.push_back(right);
-		}
-	}
-	if (p.y + 1 < maze.max_row()) {
-		Point down(p.x, p.y + 1);
-		if (maze.get(down) == cFree) {
-			maze.set(down, cVisited);
-			result.push_back(down);
-		}
-	}
-	if (p.x > 0) {
-		Point left(p.x - 1, p.y);
-		if (maze.get(left) == cFree) {
-			maze.set(left, cVisited);
-			result.push_back(left);
-		}
-	}
-	if (p.y > 0) {
-		Point up(p.x, p.y - 1);
-		if (maze.get(up) == cFree) {
-			maze.set(up, cVisited);
-			result.push_back(up);
-		}
-	}
-
-	return result;
-}
-
-bool is_path_exists(MazeWrapper &maze, const Point &begin, const Point &end)
-{
-	Point p(begin.x, begin.y);
-	std::deque<Point> q;
-
-	for (;;) {
-		if (p == end)
-			return true; // found
-
-		std::vector<Point> points = get_free_points_around(maze, p);
-		q.insert(q.begin(), points.begin(), points.end());
-
-		if (q.empty())
-			break; // not found
-
-		p = q.front();
-		q.pop_front();
-	}
-
-	return false;
+MazeType get_maze_prepared() {
+	MazeType maze;
+	maze.push_back(".x..x");
+	maze.push_back("...x.");
+	maze.push_back(".x.x.");
+	maze.push_back(".x.x.");
+	maze.push_back("x..x.");
+	maze.push_back("x..x.");
+	maze.push_back("x....");
+	maze.push_back("x.xx.");
+	return maze;
 }
 
 int main()
 {
-	std::vector<std::string> maze_v;
-	maze_v.push_back(".....");
-	maze_v.push_back("...v.");
-	maze_v.push_back("A....");
-	maze_v.push_back(".^...");
-	maze_v.push_back(".....");
+	MazeType maze_ = get_maze();
+	Maze maze(maze_);
+	maze_.print();
 
-	MazeWrapper maze(maze_v);
-	maze.print();
-
-	try {
-		if (maze.is_empty())
-			throw "Maze is empty";
-
-		prepare_maze(maze);
-		maze.print();
-
-		Point begin = maze.find(cAssassin);
-		if (begin.x == maze.max_col())
-			throw "Start point not found";
-
-		Point end = Point(maze.max_col() - 1, maze.max_row() - 1);
-		if (maze.get(end) != cFree)
-			throw "Destination point is occupied";
-
-		if (!is_path_exists(maze, begin, end))
-			throw "Path not found";
-	}
-	catch(const char *ex) {
-		std::cout << "Error: " << ex << std::endl;
+	MazeType maze_ok = get_maze_prepared();
+	if (maze_ok != maze.get_maze()) {
+		std::cout << "Validation failed! Actual:" << std::endl;
+		maze.get_maze().print();
+		std::cout << "Expected:" << std::endl;
+		maze_ok.print();
 		return -1;
 	}
 
-	std::cout << "Path found!" << std::endl;
-	maze.print();
+	if (maze.is_path_exists()) {
+		std::cout << "Path found!" << std::endl;
+		maze.get_maze().print();
+	}
+	else
+		std::cout << "Path not found." << std::endl;
+
 	return 0;
 }
